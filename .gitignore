@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+virtualenv/
+
+# Node
+node_modules/
+.next/
+.env.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store

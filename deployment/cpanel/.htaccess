@@ -1,0 +1,24 @@
+Options -MultiViews
+RewriteEngine On
+
+# ── Allow Let's Encrypt SSL verification ─────────────────────
+RewriteCond %{REQUEST_URI} ^/.well-known/acme-challenge/
+RewriteRule ^ - [L]
+
+# ── Route /api/* and /ws/* to FastAPI backend (port 8000) ────
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule /ws/(.*) ws://127.0.0.1:8000/ws/$1 [P,L]
+
+RewriteRule ^api/(.*)$ http://127.0.0.1:8000/api/$1 [P,L]
+RewriteRule ^health$ http://127.0.0.1:8000/health [P,L]
+RewriteRule ^docs$ http://127.0.0.1:8000/docs [P,L]
+RewriteRule ^openapi.json$ http://127.0.0.1:8000/openapi.json [P,L]
+
+# ── Route everything else to Next.js frontend (port 3000) ────
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+
+# Proxy pass
+ProxyPassReverse / http://127.0.0.1:3000/
+ProxyPassReverse /api/ http://127.0.0.1:8000/api/
