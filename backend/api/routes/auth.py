@@ -44,46 +44,53 @@ class UserResponse(BaseModel):
 @router.post("/signup", status_code=201)
 def signup(data: SignupRequest, db: Session = Depends(get_db)):
     """Register a new user + create their first workspace."""
+    try:
+        # Check if email exists
+        if db.query(User).filter(User.email == data.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Check if email exists
-    if db.query(User).filter(User.email == data.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
+        # Create user
+        user = User(
+            email=data.email,
+            hashed_password=get_password_hash(data.password),
+            full_name=data.full_name,
+            is_verified=True,
+        )
+        db.add(user)
+        db.flush()
 
-    # Create user
-    user = User(
-        email=data.email,
-        hashed_password=get_password_hash(data.password),
-        full_name=data.full_name,
-        is_verified=True,  # skip email verification for now
-    )
-    db.add(user)
-    db.flush()
+        # Create workspace
+        slug = data.workspace_name.lower().replace(" ", "-") + "-" + str(uuid.uuid4())[:8]
+        workspace = Workspace(name=data.workspace_name, slug=slug)
+        db.add(workspace)
+        db.flush()
 
-    # Create workspace
-    slug = data.workspace_name.lower().replace(" ", "-") + "-" + str(uuid.uuid4())[:8]
-    workspace = Workspace(name=data.workspace_name, slug=slug)
-    db.add(workspace)
-    db.flush()
+        # Add user as workspace owner
+        member = WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.OWNER)
+        db.add(member)
 
-    # Add user as workspace owner
-    member = WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role=WorkspaceRole.OWNER)
-    db.add(member)
+        # Create free subscription
+        sub = Subscription(workspace_id=workspace.id, plan="free", leads_limit=100, members_limit=2)
+        db.add(sub)
 
-    # Create free subscription
-    sub = Subscription(workspace_id=workspace.id, plan="free", leads_limit=100, members_limit=2)
-    db.add(sub)
+        # Set current workspace
+        user.current_workspace_id = workspace.id
+        db.commit()
+        db.refresh(user)
 
-    # Set current workspace
-    user.current_workspace_id = workspace.id
-    db.commit()
-    db.refresh(user)
+        token = create_access_token({"sub": str(user.id)})
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": _user_dict(user),
+        }
 
-    token = create_access_token({"sub": str(user.id)})
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": _user_dict(user),
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"[SIGNUP ERROR] {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.post("/login")

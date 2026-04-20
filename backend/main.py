@@ -126,8 +126,18 @@ def root():
     }
 
 
+# ── Global exception handler — adds CORS headers even on unhandled 500s ───────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {str(exc)}"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
 # ── CORS added LAST so it is the outermost middleware (runs first) ─────────────
-# allow_origins=["*"] + allow_credentials=False is required — cannot mix * with credentials=True
 
 app.add_middleware(
     CORSMiddleware,
