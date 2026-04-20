@@ -116,7 +116,7 @@ python create_tables.py
    - **Root Directory**: `frontend`
 4. Add Environment Variables:
    - `NEXT_PUBLIC_API_URL` = `https://ai-sales-crm-backend.onrender.com`
-   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` = `pk_live_your_key`
+   - `NEXT_PUBLIC_API_URL` = `pk_live_your_key`
 5. Click **"Deploy"**
 6. Wait 2–3 minutes
 7. You'll get a URL like: `https://ai-sales-crm.vercel.app`
