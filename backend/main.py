@@ -145,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket, workspace_id: str):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "version": "1.0.0", "app": settings.APP_NAME}
+    return {"status": "ok", "version": "2.0.0-cors-fix", "app": settings.APP_NAME}
 
 
 @app.get("/")
