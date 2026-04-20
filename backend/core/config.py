@@ -56,11 +56,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = "https://crm.mindartdigital.com,http://localhost:3000,http://localhost:3001"
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+        origins = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        return origins
 
     class Config:
         env_file = ".env"

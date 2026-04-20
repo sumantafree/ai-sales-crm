@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
     # Create DB tables
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created")
+    print(f"✅ CORS allowed origins: {settings.cors_origins_list}")
 
     # Start background scheduler
     from workers.follow_up_worker import start_scheduler
