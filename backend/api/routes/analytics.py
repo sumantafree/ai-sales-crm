@@ -89,92 +89,97 @@ def ai_insights(
     _: User = Depends(get_current_user),
 ):
     """Return pre-computed AI-style insights about the workspace performance."""
-    insights = []
+    try:
+        insights = []
 
-    # Best converting source
-    source_conversions = db.query(
-        Lead.source,
-        func.count(Lead.id).label("total"),
-        func.sum(func.cast(Lead.status == LeadStatus.CONVERTED, db.bind.dialect.name == "postgresql" and "int" or "integer")).label("converted")
-    ).filter(Lead.workspace_id == workspace_id).group_by(Lead.source).all()
+        # WhatsApp vs Facebook comparison
+        wa_leads = db.query(func.count(Lead.id)).filter(
+            Lead.workspace_id == workspace_id, Lead.source == LeadSource.WHATSAPP
+        ).scalar() or 0
+        wa_converted = db.query(func.count(Lead.id)).filter(
+            Lead.workspace_id == workspace_id,
+            Lead.source == LeadSource.WHATSAPP,
+            Lead.status == LeadStatus.CONVERTED
+        ).scalar() or 0
 
-    # WhatsApp comparison
-    wa_leads = db.query(func.count(Lead.id)).filter(
-        Lead.workspace_id == workspace_id, Lead.source == LeadSource.WHATSAPP
-    ).scalar() or 0
-    wa_converted = db.query(func.count(Lead.id)).filter(
-        Lead.workspace_id == workspace_id,
-        Lead.source == LeadSource.WHATSAPP,
-        Lead.status == LeadStatus.CONVERTED
-    ).scalar() or 0
+        fb_leads = db.query(func.count(Lead.id)).filter(
+            Lead.workspace_id == workspace_id, Lead.source == LeadSource.FACEBOOK
+        ).scalar() or 0
+        fb_converted = db.query(func.count(Lead.id)).filter(
+            Lead.workspace_id == workspace_id,
+            Lead.source == LeadSource.FACEBOOK,
+            Lead.status == LeadStatus.CONVERTED
+        ).scalar() or 0
 
-    fb_leads = db.query(func.count(Lead.id)).filter(
-        Lead.workspace_id == workspace_id, Lead.source == LeadSource.FACEBOOK
-    ).scalar() or 0
-    fb_converted = db.query(func.count(Lead.id)).filter(
-        Lead.workspace_id == workspace_id,
-        Lead.source == LeadSource.FACEBOOK,
-        Lead.status == LeadStatus.CONVERTED
-    ).scalar() or 0
+        if wa_leads > 0 and fb_leads > 0:
+            wa_rate = wa_converted / wa_leads
+            fb_rate = fb_converted / fb_leads
+            if wa_rate > fb_rate:
+                insights.append({
+                    "type": "positive",
+                    "icon": "whatsapp",
+                    "text": f"WhatsApp leads convert {round((wa_rate - fb_rate) * 100, 1)}% better than Facebook leads.",
+                    "action": "Focus more budget on WhatsApp campaigns."
+                })
 
-    if wa_leads > 0 and fb_leads > 0:
-        wa_rate = wa_converted / wa_leads
-        fb_rate = fb_converted / fb_leads
-        if wa_rate > fb_rate:
+        # Underperforming campaigns
+        low_campaigns = db.query(Campaign).filter(
+            Campaign.workspace_id == workspace_id,
+            Campaign.total_leads > 10,
+            Campaign.converted_leads == 0
+        ).all()
+        for c in low_campaigns[:2]:
             insights.append({
-                "type": "positive",
-                "icon": "whatsapp",
-                "text": f"WhatsApp leads convert {round((wa_rate - fb_rate) * 100, 1)}% better than Facebook leads.",
-                "action": "Focus more budget on WhatsApp campaigns."
+                "type": "warning",
+                "icon": "campaign",
+                "text": f"Campaign '{c.name}' has {c.total_leads} leads but 0 conversions.",
+                "action": "Review targeting or messaging for this campaign."
             })
 
-    # Underperforming campaigns
-    low_campaigns = db.query(Campaign).filter(
-        Campaign.workspace_id == workspace_id,
-        Campaign.total_leads > 10,
-        Campaign.converted_leads == 0
-    ).all()
-    for c in low_campaigns[:2]:
-        insights.append({
-            "type": "warning",
-            "icon": "campaign",
-            "text": f"Campaign '{c.name}' has {c.total_leads} leads but 0 conversions.",
-            "action": "Review targeting or messaging for this campaign."
-        })
+        # Hot leads not contacted
+        hot_uncontacted = db.query(func.count(Lead.id)).filter(
+            Lead.workspace_id == workspace_id,
+            Lead.temperature == LeadTemperature.HOT,
+            Lead.last_contacted_at.is_(None)
+        ).scalar() or 0
+        if hot_uncontacted > 0:
+            insights.append({
+                "type": "urgent",
+                "icon": "fire",
+                "text": f"{hot_uncontacted} hot leads have never been contacted!",
+                "action": "Contact these leads immediately to maximize conversion."
+            })
 
-    # Hot leads not contacted
-    hot_uncontacted = db.query(func.count(Lead.id)).filter(
-        Lead.workspace_id == workspace_id,
-        Lead.temperature == LeadTemperature.HOT,
-        Lead.last_contacted_at.is_(None)
-    ).scalar() or 0
-    if hot_uncontacted > 0:
-        insights.append({
-            "type": "urgent",
-            "icon": "fire",
-            "text": f"{hot_uncontacted} hot leads have never been contacted!",
-            "action": "Contact these leads immediately to maximize conversion."
-        })
+        # High score average
+        avg_score = db.query(func.avg(Lead.score)).filter(
+            Lead.workspace_id == workspace_id
+        ).scalar() or 0
+        if float(avg_score) > 70:
+            insights.append({
+                "type": "positive",
+                "icon": "score",
+                "text": f"Your average lead score is {round(float(avg_score), 1)} — excellent quality traffic.",
+                "action": "Keep running current campaigns to maintain quality."
+            })
 
-    # High score average
-    avg_score = db.query(func.avg(Lead.score)).filter(Lead.workspace_id == workspace_id).scalar() or 0
-    if float(avg_score) > 70:
-        insights.append({
-            "type": "positive",
-            "icon": "score",
-            "text": f"Your average lead score is {round(float(avg_score), 1)} — excellent quality traffic.",
-            "action": "Keep running current campaigns to maintain quality."
-        })
+        if not insights:
+            insights.append({
+                "type": "info",
+                "icon": "info",
+                "text": "Add more leads and campaigns to unlock AI insights.",
+                "action": "Import leads or connect Facebook Lead Ads to start capturing leads."
+            })
 
-    if not insights:
-        insights.append({
+        return {"insights": insights}
+
+    except Exception as e:
+        print(f"[AI Insights ERROR] {e}")
+        return {"insights": [{
             "type": "info",
             "icon": "info",
-            "text": "Add more leads and campaigns to unlock AI insights.",
-            "action": "Import leads or connect Facebook Lead Ads."
-        })
-
-    return {"insights": insights}
+            "text": "AI insights will appear once you have leads in the system.",
+            "action": "Add your first lead to get started."
+        }]}
 
 
 @router.get("/campaigns/roi")
