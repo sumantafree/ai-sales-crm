@@ -3,12 +3,15 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import settings
 
-# Create engine — use connection pooling for production
+if not settings.DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Please add it in Render environment variables.")
+
+# Use smaller pool for free tier (Supabase limits connections)
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=3,
+    max_overflow=5,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
