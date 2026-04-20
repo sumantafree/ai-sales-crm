@@ -4,6 +4,7 @@ Main application entry point
 """
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import json
 from typing import List
@@ -60,7 +61,6 @@ async def lifespan(app: FastAPI):
     # Create DB tables
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created")
-    print(f"✅ CORS allowed origins: {settings.cors_origins_list}")
 
     # Start background scheduler
     from workers.follow_up_worker import start_scheduler
@@ -78,42 +78,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Sales CRM API",
     description="Complete AI-powered CRM with lead intelligence and automation",
-    version="1.0.0",
+    version="3.0.0-cors-final",
     lifespan=lifespan,
 )
 
-# Single CORS middleware — handles preflight + all responses
-@app.middleware("http")
-async def cors_middleware(request: Request, call_next):
-    origin = request.headers.get("origin", "*")
-    requested_headers = request.headers.get("access-control-request-headers", "content-type, authorization")
-
-    # Handle OPTIONS preflight
-    if request.method == "OPTIONS":
-        return JSONResponse(
-            status_code=200,
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                "Access-Control-Allow-Headers": requested_headers,
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "86400",
-            },
-        )
-
-    # Handle actual request
-    try:
-        response = await call_next(request)
-    except Exception as e:
-        response = JSONResponse(status_code=500, content={"detail": str(e)})
-
-    response.headers["Access-Control-Allow-Origin"] = origin
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-    response.headers["Access-Control-Allow-Headers"] = requested_headers
-    return response
-
-# ── Routers ───────────────────────────────────────────────────────────────────
+# ── Routers (added BEFORE CORS middleware) ────────────────────────────────────
 
 app.include_router(auth_router)
 app.include_router(leads_router)
@@ -133,7 +102,6 @@ async def websocket_endpoint(websocket: WebSocket, workspace_id: str):
     await manager.connect(websocket, workspace_id)
     try:
         while True:
-            # Keep connection alive; ping/pong
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
@@ -145,17 +113,30 @@ async def websocket_endpoint(websocket: WebSocket, workspace_id: str):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "version": "2.0.0-cors-fix", "app": settings.APP_NAME}
+    return {"status": "ok", "version": "3.0.0-cors-final", "app": settings.APP_NAME}
 
 
 @app.get("/")
 def root():
     return {
         "app": settings.APP_NAME,
-        "version": "1.0.0",
+        "version": "3.0.0-cors-final",
         "docs": "/docs",
         "status": "running",
     }
+
+
+# ── CORS added LAST so it is the outermost middleware (runs first) ─────────────
+# allow_origins=["*"] + allow_credentials=False is required — cannot mix * with credentials=True
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 
 # ── Notification broadcaster (used by services) ───────────────────────────────
