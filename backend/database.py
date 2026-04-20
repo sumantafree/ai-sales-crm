@@ -3,15 +3,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import settings
 
-if not settings.DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set. Please add it in Render environment variables.")
-
 # Use smaller pool for free tier (Supabase limits connections)
+_db_url = settings.DATABASE_URL or "sqlite:///./fallback.db"
 engine = create_engine(
-    settings.DATABASE_URL,
+    _db_url,
     pool_pre_ping=True,
     pool_size=3,
     max_overflow=5,
+    connect_args={"check_same_thread": False} if "sqlite" in _db_url else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
